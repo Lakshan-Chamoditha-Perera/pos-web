@@ -1,5 +1,4 @@
 "use client";
-import { Counter } from "./components/Counter";
 import Link from "next/link";
 
 export default function Home() {
