@@ -1,6 +1,6 @@
 "use client"
 import React from 'react'
-import { Home, Search } from 'lucide-react'
+import { Home } from 'lucide-react'
 
 const NotFoundPage = () => {
     return (
