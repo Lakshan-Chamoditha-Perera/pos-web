@@ -1,4 +1,4 @@
-name: CI
+name: Build and Package
 
 on:
   push:
@@ -7,12 +7,18 @@ on:
 
 jobs:
   lint_and_build:
-    name: Lint & Build
+    name: Lint, Build & Create Deployment Package
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Print workspace info (debug)
+        run: |
+          echo "GITHUB_WORKSPACE: $GITHUB_WORKSPACE"
+          echo "Listing root:"
+          ls -la
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -29,9 +35,39 @@ jobs:
       - name: Build Next.js project
         run: npm run build
 
+      - name: Show .next contents (debug)
+        run: |
+          echo "Build exit code: $?"
+          if [ -d .next ]; then
+            echo ".next exists. size:"
+            du -sh .next || true
+            ls -la .next | sed -n '1,200p'
+          else
+            echo "ERROR: .next directory not found. Listing repo root:"
+            ls -la
+            exit 1
+          fi
+
+      - name: Ensure zip is installed
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y zip
+
       - name: Create BUILD.ZIP
         run: |
+          set -e
+          echo "Files we'll include:"
+          for f in .next package.json package-lock.json next.config.ts; do
+            if [ -e "$f" ]; then
+              echo " - $f (present)"
+            else
+              echo " - $f (MISSING)"
+            fi
+          done
+          # Create zip. Use -q to reduce log noise but keep -r
           zip -r BUILD.ZIP .next package.json package-lock.json next.config.ts
+          echo "Created BUILD.ZIP:"
+          ls -lh BUILD.ZIP
 
       - name: Upload BUILD.ZIP artifact
         uses: actions/upload-artifact@v4
