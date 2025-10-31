@@ -1,9 +1,9 @@
 name: CI
 
 on:
-  pull_request:
   push:
-    branches: [master]
+    branches:
+      - master
 
 jobs:
   lint_and_build:
@@ -29,12 +29,12 @@ jobs:
       - name: Build Next.js project
         run: npm run build
 
-      - name: Upload build artifacts
+      - name: Create BUILD.ZIP
+        run: |
+          zip -r BUILD.ZIP .next package.json package-lock.json next.config.ts
+
+      - name: Upload BUILD.ZIP artifact
         uses: actions/upload-artifact@v4
         with:
-          name: next-build
-          path: |
-            .next
-            package.json
-            package-lock.json
-            next.config.ts
+          name: BUILD.ZIP
+          path: BUILD.ZIP
