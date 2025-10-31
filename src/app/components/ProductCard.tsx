@@ -4,11 +4,12 @@ import Link from "next/link";
 import { useAppDispatch, useAppSelector } from "../lib/store/hooks";
 import { addToCart } from "../lib/store/slices/productsSlice";
 import type { Product } from "../lib/store/slices/productsSlice";
+import type { RootState } from "../lib/store";
 
 export function ProductCard({ product }: { product: Product }) {
   const dispatch = useAppDispatch();
-  const isInCart = useAppSelector((state) =>
-    state.products.cart.some((item) => item.id === product.id)
+  const isInCart = useAppSelector((state: RootState) =>
+    state.products.cart.some((item: Product) => item.id === product.id)
   );
 
   return (
