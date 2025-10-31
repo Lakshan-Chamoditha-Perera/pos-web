@@ -6,8 +6,8 @@ on:
     branches: [master]
 
 jobs:
-  lint:
-    name: ESLint Check
+  lint_and_build:
+    name: Lint & Build
     runs-on: ubuntu-latest
 
     steps:
@@ -25,3 +25,16 @@ jobs:
 
       - name: Run ESLint
         run: npm run lint -- --max-warnings=0
+
+      - name: Build Next.js project
+        run: npm run build
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: next-build
+          path: |
+            .next
+            package.json
+            package-lock.json
+            next.config.ts
