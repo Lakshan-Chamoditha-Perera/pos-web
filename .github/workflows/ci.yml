@@ -7,7 +7,7 @@ on:
 
 jobs:
   lint_and_build:
-    name: Lint, Build & Create Deployment Package
+    name: Lint, Build & Create Deployment Package (prod-only zip)
     runs-on: ubuntu-latest
 
     steps:
@@ -26,7 +26,7 @@ jobs:
           node-version: 20
           cache: npm
 
-      - name: Install dependencies
+      - name: Install dependencies (dev + prod) for build
         run: npm ci
 
       - name: Run ESLint
@@ -48,26 +48,55 @@ jobs:
             exit 1
           fi
 
-      - name: Ensure zip is installed
+      - name: Ensure zip & rsync installed
         run: |
           sudo apt-get update -y
-          sudo apt-get install -y zip
+          sudo apt-get install -y zip rsync
 
-      - name: Create build.zip
+      # Create a temporary directory that will contain only production files
+      - name: Prepare production bundle directory
         run: |
           set -e
-          echo "Files we'll include:"
-          for f in .next package.json package-lock.json next.config.ts; do
-            if [ -e "$f" ]; then
-              echo " - $f (present)"
-            else
-              echo " - $f (MISSING)"
-            fi
-          done
-          # Create zip. Use -q to reduce log noise but keep -r
-          zip -r build.zip .next package.json package-lock.json next.config.ts
-          echo "Created build.zip:"
+          PROD_DIR=prod_bundle
+          rm -rf $PROD_DIR
+          mkdir -p $PROD_DIR
+
+          # Copy build output and project files needed for runtime into prod dir
+          rsync -a --delete .next package.json package-lock.json next.config.ts $PROD_DIR/ || true
+
+          # If you need public or static data, uncomment this:
+          # rsync -a public $PROD_DIR/ || true
+
+          echo "Contents of prod bundle before installing prod deps:"
+          ls -la $PROD_DIR
+
+      # Install only production dependencies inside prod_bundle (without touching workspace node_modules)
+      - name: Install production dependencies into prod bundle
+        run: |
+          set -e
+          PROD_DIR=prod_bundle
+
+          pushd $PROD_DIR
+            echo "Installing production dependencies..."
+            npm ci --omit=dev || npm ci --only=production || npm install --only=production
+            echo "node_modules size (prod bundle):"
+            du -sh node_modules || true
+          popd
+
+      - name: Create build.zip from prod bundle
+        run: |
+          set -e
+          PROD_DIR=prod_bundle
+          ZIP_NAME=build.zip
+
+          pushd $PROD_DIR
+            zip -r "../$ZIP_NAME" . -q
+          popd
+
+          echo "Created $ZIP_NAME:"
           ls -lh build.zip
+          echo "Preview archive contents (first 200 lines):"
+          unzip -l build.zip | sed -n '1,200p' || true
 
       - name: Upload build.zip artifact
         uses: actions/upload-artifact@v4
