@@ -9,6 +9,8 @@ jobs:
   lint_and_build:
     name: Lint, Build & Create Deployment Package (prod-only zip)
     runs-on: ubuntu-latest
+    env:
+      CI: true
 
     steps:
       - name: Checkout code
@@ -33,7 +35,10 @@ jobs:
         run: npm run lint -- --max-warnings=0
 
       - name: Build Next.js project
-        run: npm run build
+        run: |
+          # explicit node env for build
+          export NODE_ENV=production
+          npm run build
 
       - name: Show .next contents (debug)
         run: |
@@ -53,7 +58,6 @@ jobs:
           sudo apt-get update -y
           sudo apt-get install -y zip rsync
 
-      # Create a temporary directory that will contain only production files
       - name: Prepare production bundle directory
         run: |
           set -e
@@ -61,26 +65,39 @@ jobs:
           rm -rf $PROD_DIR
           mkdir -p $PROD_DIR
 
-          # Copy build output and project files needed for runtime into prod dir
-          rsync -a --delete .next package.json package-lock.json next.config.ts $PROD_DIR/ || true
+          # If Next produced a standalone output, prefer to ship that (smaller & self-contained)
+          if [ -d ".next/standalone" ]; then
+            echo "Using Next standalone output"
+            rsync -a --delete .next/standalone/ $PROD_DIR/ || true
 
-          # If you need public or static data, uncomment this:
-          # rsync -a public $PROD_DIR/ || true
+            # If you have required files (package.json, next.config), include them
+            rsync -a package.json package-lock.json next.config.ts $PROD_DIR/ || true
+            # public may be required at runtime
+            rsync -a public $PROD_DIR/ || true
+          else
+            echo "Using normal Next output (.next)"
+            # copy build output and runtime files needed for Next start
+            rsync -a --delete .next package.json package-lock.json next.config.ts $PROD_DIR/ || true
+            rsync -a public $PROD_DIR/ || true
+          fi
 
-          echo "Contents of prod bundle before installing prod deps:"
+          echo "Contents of prod bundle BEFORE installing prod deps:"
           ls -la $PROD_DIR
 
-      # Install only production dependencies inside prod_bundle (without touching workspace node_modules)
       - name: Install production dependencies into prod bundle
         run: |
           set -e
           PROD_DIR=prod_bundle
 
           pushd $PROD_DIR
-            echo "Installing production dependencies..."
+            # ensure we explicitly set NODE_ENV=production for npm to install prod deps
+            export NODE_ENV=production
+            echo "Installing production dependencies into $PROD_DIR..."
+            # prefer reproducible install; fall back to other commands if necessary
             npm ci --omit=dev || npm ci --only=production || npm install --only=production
             echo "node_modules size (prod bundle):"
             du -sh node_modules || true
+            ls -la node_modules | sed -n '1,200p' || true
           popd
 
       - name: Create build.zip from prod bundle
@@ -90,7 +107,8 @@ jobs:
           ZIP_NAME=build.zip
 
           pushd $PROD_DIR
-            zip -r "../$ZIP_NAME" . -q
+            # exclude caches and unnecessary files to keep archive small
+            zip -r "../$ZIP_NAME" . -x "node_modules/**/.cache/**" -x ".next/cache/**" -x "**/__pycache__/**" -x "*.map" -q
           popd
 
           echo "Created $ZIP_NAME:"
