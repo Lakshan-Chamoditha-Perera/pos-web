@@ -6,13 +6,17 @@ on:
       - master
 
 jobs:
-  lint_and_build:
-    name: Lint, Build & Create Deployment Package (prod-only zip)
+  build-and-zip:
+    name: Build + Zip production bundle
     runs-on: ubuntu-latest
     env:
       CI: true
+      NODE_ENV: production
 
     steps:
+      # ---------------------------------------------------------
+      # 1. Checkout & Node setup
+      # ---------------------------------------------------------
       - name: Checkout code
         uses: actions/checkout@v4
 
@@ -22,78 +26,78 @@ jobs:
           node-version: 20
           cache: npm
 
-      - name: Install dependencies (dev + prod) for build
+      # ---------------------------------------------------------
+      # 2. Install *all* deps (needed for the build)
+      # ---------------------------------------------------------
+      - name: Install dependencies
         run: npm ci
 
-      - name: Run ESLint
+      # ---------------------------------------------------------
+      # 3. Lint & Build
+      # ---------------------------------------------------------
+      - name: Lint
         run: npm run lint -- --max-warnings=0
 
-      - name: Build Next.js project
-        run: |
-          export NODE_ENV=production
-          npm run build
+      - name: Build Next.js
+        run: npm run build
 
-      - name: Ensure zip, unzip & rsync installed
-        run: |
-          sudo apt-get update -y
-          sudo apt-get install -y zip unzip rsync
-
-      - name: Prepare production bundle
+      # ---------------------------------------------------------
+      # 4. Prepare a clean folder with ONLY production files
+      # ---------------------------------------------------------
+      - name: Create production bundle folder
         run: |
           set -e
           rm -rf prod_bundle
           mkdir -p prod_bundle
 
-          echo "Copying full .next directory..."
-          rsync -a .next prod_bundle/.next || true
+          # ---- .next (full compiled output) ----
+          rsync -a .next/ prod_bundle/.next/
 
-          echo "Copying runtime files..."
-          [ -f package.json ] && rsync -a package.json prod_bundle/ || true
-          [ -f package-lock.json ] && rsync -a package-lock.json prod_bundle/ || true
-          [ -f next.config.ts ] && rsync -a next.config.ts prod_bundle/ || true
-          [ -f next.config.js ] && rsync -a next.config.js prod_bundle/ || true
-          [ -d public ] && rsync -a public/ prod_bundle/public/ || true
+          # ---- config files ----
+          [ -f next.config.js ] && cp next.config.js prod_bundle/
+          [ -f next.config.ts ] && cp next.config.ts prod_bundle/
 
-          echo "Contents of prod_bundle before installing production deps:"
-          ls -la prod_bundle | sed -n '1,200p'
+          # ---- package files ----
+          cp package.json package-lock.json prod_bundle/
 
-      - name: Install production dependencies inside prod_bundle
+          # ---- public folder (if exists) ----
+          [ -d public ] && rsync -a public/ prod_bundle/public/
+
+      # ---------------------------------------------------------
+      # 5. Install **production-only** node_modules inside the bundle
+      # ---------------------------------------------------------
+      - name: Install production dependencies
+        run: |
+          cd prod_bundle
+          npm ci --omit=dev          # or: npm ci --production
+          npm prune --production     # extra safety
+
+      # ---------------------------------------------------------
+      # 6. Zip the bundle (timestamped name)
+      # ---------------------------------------------------------
+      - name: Create timestamped zip
         run: |
           set -e
           cd prod_bundle
-          export NODE_ENV=production
-          echo "Installing production dependencies..."
-          npm ci --omit=dev || npm ci --only=production || npm install --only=production
-          echo "node_modules size (prod bundle):"
-          du -sh node_modules || true
-          ls -la node_modules | sed -n '1,200p' || true
 
-      - name: Create timestamped build.zip
-        run: |
-          set -e
-          cd prod_bundle
-
-          # Generate filename: build_YYYY-MM-DD_HH-MM.zip
           ZIP_NAME="build_$(date -u +'%Y-%m-%d_%H-%M').zip"
+          echo "Creating $ZIP_NAME ..."
 
-          echo "Creating $ZIP_NAME..."
           zip -r "../$ZIP_NAME" . \
-            -x "node_modules/**/.cache/**" \
             -x ".next/cache/**" \
-            -x "**/__pycache__/**" \
-            -x "*.map" \
+            -x "node_modules/.npm/**" \
+            -x "node_modules/.cache/**" \
+            -x "**/*.map" \
             -q
+
           cd ..
-
-          echo "Created $ZIP_NAME:"
-          ls -lh $ZIP_NAME
-          echo "Preview contents (first 200 lines):"
-          unzip -l $ZIP_NAME | sed -n '1,200p' || true
-
-          # Save filename for later steps
           echo "ZIP_NAME=$ZIP_NAME" >> $GITHUB_ENV
+          echo "Size: $(du -h $ZIP_NAME | cut -f1)"
 
-      - name: Upload build.zip artifact
+      # ---------------------------------------------------------
+      # 7. Upload artifact
+      # ---------------------------------------------------------
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ env.ZIP_NAME }}
