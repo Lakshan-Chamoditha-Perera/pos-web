@@ -47,8 +47,8 @@ jobs:
             public \
             next.config.* || true
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: deployment-package-${{ github.run_number }}
-          path: deployment-package-*.zip
+      # - name: Upload artifact
+      #   uses: actions/upload-artifact@v4
+      #   with:
+      #     name: deployment-package-${{ github.run_number }}
+      #     path: deployment-package-*.zip
