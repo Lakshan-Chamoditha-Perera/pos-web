@@ -44,7 +44,7 @@ jobs:
           rm -rf prod_bundle
           mkdir -p prod_bundle
 
-          echo "Copying full .next directory to prod_bundle..."
+          echo "Copying full .next directory..."
           rsync -a .next prod_bundle/.next || true
 
           echo "Copying runtime files..."
@@ -68,25 +68,33 @@ jobs:
           du -sh node_modules || true
           ls -la node_modules | sed -n '1,200p' || true
 
-      - name: Create build.zip from prod_bundle
+      - name: Create timestamped build.zip
         run: |
           set -e
           cd prod_bundle
-          echo "Creating build.zip..."
-          zip -r ../build.zip . \
+
+          # Generate filename: build_YYYY-MM-DD_HH-MM.zip
+          ZIP_NAME="build_$(date -u +'%Y-%m-%d_%H-%M').zip"
+
+          echo "Creating $ZIP_NAME..."
+          zip -r "../$ZIP_NAME" . \
             -x "node_modules/**/.cache/**" \
             -x ".next/cache/**" \
             -x "**/__pycache__/**" \
             -x "*.map" \
             -q
           cd ..
-          echo "Created build.zip:"
-          ls -lh build.zip
+
+          echo "Created $ZIP_NAME:"
+          ls -lh $ZIP_NAME
           echo "Preview contents (first 200 lines):"
-          unzip -l build.zip | sed -n '1,200p' || true
+          unzip -l $ZIP_NAME | sed -n '1,200p' || true
+
+          # Save filename for later steps
+          echo "ZIP_NAME=$ZIP_NAME" >> $GITHUB_ENV
 
       - name: Upload build.zip artifact
         uses: actions/upload-artifact@v4
         with:
-          name: build.zip
-          path: build.zip
+          name: ${{ env.ZIP_NAME }}
+          path: ${{ env.ZIP_NAME }}
