@@ -22,79 +22,33 @@ jobs:
           node-version: 20
           cache: npm
 
-      - name: Install dependencies (dev + prod) for build
+      - name: Install dependencies
         run: npm ci
 
-      - name: Run ESLint
-        run: npm run lint -- --max-warnings=0
+      - name: Run linter
+        run: npm run lint
 
-      - name: Build Next.js project
+      - name: Build application
+        run: npm run build
+
+      - name: Install production dependencies only
         run: |
-          export NODE_ENV=production
-          npm run build
+          rm -rf node_modules
+          npm ci --omit=dev
 
-      - name: Ensure zip, unzip & rsync installed
+      - name: Create deployment package
         run: |
-          sudo apt-get update -y
-          sudo apt-get install -y zip unzip rsync
+          TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+          zip -r deployment-package-${TIMESTAMP}.zip \
+            .next \
+            node_modules \
+            package.json \
+            package-lock.json \
+            public \
+            next.config.* || true
 
-      - name: Prepare production bundle
-        run: |
-          set -e
-          rm -rf prod_bundle
-          mkdir -p prod_bundle
-
-          echo "Copying full .next directory..."
-          rsync -a .next prod_bundle/.next || true
-
-          echo "Copying runtime files..."
-          [ -f package.json ] && rsync -a package.json prod_bundle/ || true
-          [ -f package-lock.json ] && rsync -a package-lock.json prod_bundle/ || true
-          [ -f next.config.ts ] && rsync -a next.config.ts prod_bundle/ || true
-          [ -f next.config.js ] && rsync -a next.config.js prod_bundle/ || true
-          [ -d public ] && rsync -a public/ prod_bundle/public/ || true
-
-          echo "Contents of prod_bundle before installing production deps:"
-          ls -la prod_bundle | sed -n '1,200p'
-
-      - name: Install production dependencies inside prod_bundle
-        run: |
-          set -e
-          cd prod_bundle
-          export NODE_ENV=production
-          echo "Installing production dependencies..."
-          npm ci --omit=dev || npm ci --only=production || npm install --only=production
-          echo "node_modules size (prod bundle):"
-          du -sh node_modules || true
-          ls -la node_modules | sed -n '1,200p' || true
-
-      - name: Create timestamped build.zip
-        run: |
-          set -e
-          cd prod_bundle
-
-          # Generate filename: build_YYYY-MM-DD_HH-MM.zip
-          ZIP_NAME="build_$(date -u +'%Y-%m-%d_%H-%M').zip"
-
-          echo "Creating $ZIP_NAME..."
-          zip -r "../$ZIP_NAME" . \
-            -x "node_modules/**/.cache/**" \
-            -x ".next/cache/**" \
-            -x "**/__pycache__/**" \
-            -x "*.map" \
-            -q
-          cd ..
-
-          echo "Created $ZIP_NAME:"
-          ls -lh $ZIP_NAME
-          echo "Preview contents (first 200 lines):"
-          unzip -l $ZIP_NAME | sed -n '1,200p' || true
-
-          # Save filename for later steps
-          echo "ZIP_NAME=$ZIP_NAME" >> $GITHUB_ENV
-
-      - name: Upload build.zip artifact
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ env.ZIP_NAME }}
-          path: ${{ env.ZIP_NAME }}
+          name: deployment-package-${{ github.run_number }}
+          path: deployment-package-*.zip
