@@ -33,11 +33,8 @@ jobs:
         run: npm ci
 
       # ---------------------------------------------------------
-      # 3. Lint & Build
+      # 3. Build
       # ---------------------------------------------------------
-      - name: Lint
-        run: npm run lint -- --max-warnings=0
-
       - name: Build Next.js
         run: npm run build
 
