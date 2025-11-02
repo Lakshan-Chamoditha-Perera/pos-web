@@ -16,12 +16,6 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Print workspace info (debug)
-        run: |
-          echo "GITHUB_WORKSPACE: $GITHUB_WORKSPACE"
-          echo "Listing root:"
-          ls -la
-
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -36,84 +30,59 @@ jobs:
 
       - name: Build Next.js project
         run: |
-          # explicit node env for build
           export NODE_ENV=production
           npm run build
 
-      - name: Show .next contents (debug)
-        run: |
-          echo "Build exit code: $?"
-          if [ -d .next ]; then
-            echo ".next exists. size:"
-            du -sh .next || true
-            ls -la .next | sed -n '1,200p'
-          else
-            echo "ERROR: .next directory not found. Listing repo root:"
-            ls -la
-            exit 1
-          fi
-
-      - name: Ensure zip & rsync installed
+      - name: Ensure zip, unzip & rsync installed
         run: |
           sudo apt-get update -y
-          sudo apt-get install -y zip rsync
+          sudo apt-get install -y zip unzip rsync
 
-      - name: Prepare production bundle directory
+      - name: Prepare production bundle
         run: |
           set -e
-          PROD_DIR=prod_bundle
-          rm -rf $PROD_DIR
-          mkdir -p $PROD_DIR
+          rm -rf prod_bundle
+          mkdir -p prod_bundle
 
-          # If Next produced a standalone output, prefer to ship that (smaller & self-contained)
-          if [ -d ".next/standalone" ]; then
-            echo "Using Next standalone output"
-            rsync -a --delete .next/standalone/ $PROD_DIR/ || true
+          echo "Copying full .next directory to prod_bundle..."
+          rsync -a .next prod_bundle/.next || true
 
-            # If you have required files (package.json, next.config), include them
-            rsync -a package.json package-lock.json next.config.ts $PROD_DIR/ || true
-            # public may be required at runtime
-            rsync -a public $PROD_DIR/ || true
-          else
-            echo "Using normal Next output (.next)"
-            # copy build output and runtime files needed for Next start
-            rsync -a --delete .next package.json package-lock.json next.config.ts $PROD_DIR/ || true
-            rsync -a public $PROD_DIR/ || true
-          fi
+          echo "Copying runtime files..."
+          [ -f package.json ] && rsync -a package.json prod_bundle/ || true
+          [ -f package-lock.json ] && rsync -a package-lock.json prod_bundle/ || true
+          [ -f next.config.ts ] && rsync -a next.config.ts prod_bundle/ || true
+          [ -f next.config.js ] && rsync -a next.config.js prod_bundle/ || true
+          [ -d public ] && rsync -a public/ prod_bundle/public/ || true
 
-          echo "Contents of prod bundle BEFORE installing prod deps:"
-          ls -la $PROD_DIR
+          echo "Contents of prod_bundle before installing production deps:"
+          ls -la prod_bundle | sed -n '1,200p'
 
-      - name: Install production dependencies into prod bundle
+      - name: Install production dependencies inside prod_bundle
         run: |
           set -e
-          PROD_DIR=prod_bundle
+          cd prod_bundle
+          export NODE_ENV=production
+          echo "Installing production dependencies..."
+          npm ci --omit=dev || npm ci --only=production || npm install --only=production
+          echo "node_modules size (prod bundle):"
+          du -sh node_modules || true
+          ls -la node_modules | sed -n '1,200p' || true
 
-          pushd $PROD_DIR
-            # ensure we explicitly set NODE_ENV=production for npm to install prod deps
-            export NODE_ENV=production
-            echo "Installing production dependencies into $PROD_DIR..."
-            # prefer reproducible install; fall back to other commands if necessary
-            npm ci --omit=dev || npm ci --only=production || npm install --only=production
-            echo "node_modules size (prod bundle):"
-            du -sh node_modules || true
-            ls -la node_modules | sed -n '1,200p' || true
-          popd
-
-      - name: Create build.zip from prod bundle
+      - name: Create build.zip from prod_bundle
         run: |
           set -e
-          PROD_DIR=prod_bundle
-          ZIP_NAME=build.zip
-
-          pushd $PROD_DIR
-            # exclude caches and unnecessary files to keep archive small
-            zip -r "../$ZIP_NAME" . -x "node_modules/**/.cache/**" -x ".next/cache/**" -x "**/__pycache__/**" -x "*.map" -q
-          popd
-
-          echo "Created $ZIP_NAME:"
+          cd prod_bundle
+          echo "Creating build.zip..."
+          zip -r ../build.zip . \
+            -x "node_modules/**/.cache/**" \
+            -x ".next/cache/**" \
+            -x "**/__pycache__/**" \
+            -x "*.map" \
+            -q
+          cd ..
+          echo "Created build.zip:"
           ls -lh build.zip
-          echo "Preview archive contents (first 200 lines):"
+          echo "Preview contents (first 200 lines):"
           unzip -l build.zip | sed -n '1,200p' || true
 
       - name: Upload build.zip artifact
