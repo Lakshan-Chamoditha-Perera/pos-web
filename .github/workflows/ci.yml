@@ -44,11 +44,13 @@ jobs:
             node_modules \
             package.json \
             package-lock.json \
+            next.config.* \
             public \
-            next.config.* || true
+            .env.production \
+            .env.local || true
 
-      # - name: Upload artifact
-      #   uses: actions/upload-artifact@v4
-      #   with:
-      #     name: deployment-package-${{ github.run_number }}
-      #     path: deployment-package-*.zip
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: deployment-package-${{ github.run_number }}
+          path: deployment-package-*.zip
