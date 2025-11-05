@@ -11,10 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       CI: true
-      # Inject secrets as env vars (they'll be available at runtime)
-      NODE_ENV: production
-      # Add more below if needed, or keep them in deploy step
-
+      NODE_ENV: production # OK to set for the job (affects runtime/build)
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -25,23 +22,27 @@ jobs:
           node-version: 20
           cache: npm
 
-      - name: Set Environment Variables
+      - name: Set Environment Variables (persist for later steps)
         run: |
+          # Write secrets into the environment for later steps
           echo "NODE_ENV=${NODE_ENV}" >> $GITHUB_ENV
           echo "NEXT_PUBLIC_BASE_URL=${{ secrets.NEXT_PUBLIC_BASE_URL }}" >> $GITHUB_ENV
-          # Verify variables are set (without exposing values)
+
+          # Quick verification (evaluated at workflow parse time) without exposing secret
           if [ -z "${{ secrets.NEXT_PUBLIC_BASE_URL }}" ]; then
-            echo "Warning: NEXT_PUBLIC_BASE_URL is not set"
+            echo "Warning: NEXT_PUBLIC_BASE_URL secret is not set"
           else
-            echo "NEXT_PUBLIC_BASE_URL is configured"
+            echo "NEXT_PUBLIC_BASE_URL secret is present"
           fi
 
-      - name: Install dependencies
+      - name: Install dependencies (including devDependencies)
+        # ensure devDependencies are installed even though NODE_ENV=production above
+        env:
+          NPM_CONFIG_PRODUCTION: false
         run: npm ci
 
       - name: Build application
         run: npm run build
-        # Secrets are automatically available here if used in build
 
       - name: Clean old deployment packages
         run: rm -f deployment-package-*.zip
@@ -52,7 +53,7 @@ jobs:
           cp -r .next deploy/
           cp -r public deploy/
           cp package.json deploy/
-          cp package-lock.json deploy/
+          cp package-lock.json deploy/ 2>/dev/null || true
           cp next.config.* deploy/ 2>/dev/null || true
 
       - name: Create deployment package
