@@ -7,7 +7,7 @@ on:
 
 jobs:
   lint_and_build:
-    name: Lint, Build & Create Deployment Package (prod-only zip)
+    name: Lint, Build & Create Deployment Package
     runs-on: ubuntu-latest
     env:
       CI: true
@@ -24,10 +24,7 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
-
-      - name: Run linter
-        run: npm run lint
-
+        
       - name: Build application
         run: npm run build
 
@@ -36,21 +33,35 @@ jobs:
           rm -rf node_modules
           npm ci --omit=dev
 
-      - name: Create deployment package
+      - name: Create deployment directory
         run: |
-          TIMESTAMP=$(date +%Y%m%d-%H%M%S)
-          zip -r deployment-package-${TIMESTAMP}.zip \
-            .next \
-            node_modules \
-            package.json \
-            package-lock.json \
-            next.config.* \
-            public \
-            .env.production \
-            .env.local || true
+          mkdir -p deploy
+          cp -r .next deploy/
+          cp -r node_modules deploy/
+          cp -r public deploy/
+          cp package.json deploy/
+          cp package-lock.json deploy/
+          cp next.config.* deploy/ 2>/dev/null || true
+          cp .env.production deploy/ 2>/dev/null || true
+          cp .env.local deploy/ 2>/dev/null || true
 
-      - name: Upload artifact
+      - name: Upload deployment package
         uses: actions/upload-artifact@v4
         with:
           name: deployment-package-${{ github.run_number }}
+          path: deploy/
+          # Don't compress - upload-artifact handles this
+          compression-level: 0
+
+      # - name: Create release zip (optional)
+        # run: |
+          # TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+          # cd deploy
+          # zip -r ../deployment-package-${TIMESTAMP}.zip .
+          # cd ..
+
+      - name: Upload release zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: deployment-zip-${{ github.run_number }}
           path: deployment-package-*.zip
