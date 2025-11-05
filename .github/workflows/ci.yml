@@ -31,6 +31,9 @@ jobs:
       - name: Build application
         run: npm run build
 
+      - name: Clean old deployment packages
+        run: rm -f deployment-package-*.zip
+
       - name: Create deployment directory
         run: |
           mkdir -p deploy
@@ -45,12 +48,14 @@ jobs:
       - name: Create deployment package
         run: |
           TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+          ZIP_NAME="deployment-package-${TIMESTAMP}.zip"
           cd deploy
-          zip -r ../deployment-package-${TIMESTAMP}.zip .
-          cd ..
+          zip -r "../${ZIP_NAME}" .
+          echo "DEPLOY_ZIP=${ZIP_NAME}" >> $GITHUB_ENV
+          echo "Created deployment package: ${ZIP_NAME}"
 
       - name: Upload deployment package
         uses: actions/upload-artifact@v4
         with:
           name: deployment-package-${{ github.run_number }}
-          path: deployment-package-*.zip
+          path: ${{ env.DEPLOY_ZIP }}
