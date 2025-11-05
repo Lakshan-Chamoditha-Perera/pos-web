@@ -11,6 +11,9 @@ jobs:
     runs-on: ubuntu-latest
     env:
       CI: true
+      # Inject secrets as env vars (they'll be available at runtime)
+      NODE_ENV: production
+      # Add more below if needed, or keep them in deploy step
 
     steps:
       - name: Checkout code
@@ -30,6 +33,7 @@ jobs:
 
       - name: Build application
         run: npm run build
+        # Secrets are automatically available here if used in build
 
       - name: Clean old deployment packages
         run: rm -f deployment-package-*.zip
@@ -42,8 +46,6 @@ jobs:
           cp package.json deploy/
           cp package-lock.json deploy/
           cp next.config.* deploy/ 2>/dev/null || true
-          cp .env.production deploy/ 2>/dev/null || true
-          cp .env.local deploy/ 2>/dev/null || true
 
       - name: Create deployment package
         run: |
