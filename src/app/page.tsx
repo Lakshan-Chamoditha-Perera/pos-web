@@ -2,6 +2,8 @@
 import Link from "next/link";
 
 export default function Home() {
+  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "Not configured";
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
       {/* Hero Section */}
@@ -13,6 +15,12 @@ export default function Home() {
           Streamline your business operations with our powerful, easy-to-use
           web-based POS solution.
         </p>
+        <div className="mb-8 inline-block bg-white px-6 py-3 rounded-lg shadow-md border border-indigo-200">
+          <span className="text-sm font-semibold text-gray-700">
+            API Base URL:{" "}
+          </span>
+          <span className="text-sm text-indigo-600 font-mono">{baseUrl}</span>
+        </div>
         <div className="flex gap-4 justify-center">
           <Link
             href="/products"
