@@ -9,12 +9,21 @@ jobs:
   lint_and_build:
     name: Lint, Build & Create Deployment Package
     runs-on: ubuntu-latest
+
+    # If you use GitHub Environments (approval/protection), keep this; otherwise remove it.
+    environment: dev
+
+    # Job-level env can reference secrets safely.
     env:
       CI: true
-      NODE_ENV: production # OK to set for the job (affects runtime/build)
+      NODE_ENV: production
+      NEXT_PUBLIC_BASE_URL: ${{ secrets.NEXT_PUBLIC_BASE_URL }}
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -22,21 +31,24 @@ jobs:
           node-version: 20
           cache: npm
 
-      - name: Set Environment Variables (persist for later steps)
+      - name: Persist simple env for later steps
         run: |
-          # Write secrets into the environment for later steps
+          # Persist non-secret values (these will be available in later steps)
           echo "NODE_ENV=${NODE_ENV}" >> $GITHUB_ENV
+
+      - name: Persist secret to GITHUB_ENV (no printing)
+        # write secret into GITHUB_ENV so later steps can access it as $NEXT_PUBLIC_BASE_URL
+        run: |
+          if [ -z "${{ secrets.NEXT_PUBLIC_BASE_URL }}" ]; then
+            echo "Warning: NEXT_PUBLIC_BASE_URL secret is not set" 1>&2
+            exit 1
+          fi
+          # Write the secret to GITHUB_ENV for subsequent steps.
+          # GitHub masks secrets in logs, but avoid printing the value.
           echo "NEXT_PUBLIC_BASE_URL=${{ secrets.NEXT_PUBLIC_BASE_URL }}" >> $GITHUB_ENV
 
-          # Quick verification (evaluated at workflow parse time) without exposing secret
-          if [ -z "${{ secrets.NEXT_PUBLIC_BASE_URL }}" ]; then
-            echo "Warning: NEXT_PUBLIC_BASE_URL secret is not set"
-          else
-            echo "NEXT_PUBLIC_BASE_URL secret is present"
-          fi
-
       - name: Install dependencies (including devDependencies)
-        # ensure devDependencies are installed even though NODE_ENV=production above
+        # ensure devDependencies are installed for the build step despite NODE_ENV=production above
         env:
           NPM_CONFIG_PRODUCTION: false
         run: npm ci
@@ -45,23 +57,42 @@ jobs:
         run: npm run build
 
       - name: Clean old deployment packages
-        run: rm -f deployment-package-*.zip
+        run: rm -f deployment-package-*.zip || true
 
       - name: Create deployment directory
         run: |
           mkdir -p deploy
+          # Copy build and static assets
           cp -r .next deploy/
           cp -r public deploy/
+          # Copy package files for installing production deps into deploy
           cp package.json deploy/
           cp package-lock.json deploy/ 2>/dev/null || true
-          cp next.config.* deploy/ 2>/dev/null || true
+          # copy next.config.* only if present
+          if ls next.config.* 1> /dev/null 2>&1; then
+            cp next.config.* deploy/ || true
+          fi
+
+      - name: Install production dependencies inside deploy (create minimal deployment)
+        run: |
+          cd deploy
+          # ensure we install only production dependencies to keep the artifact small
+          if [ -f package-lock.json ]; then
+            npm ci --omit=dev
+          else
+            npm install --production
+          fi
 
       - name: Create deployment package
         run: |
           TIMESTAMP=$(date +%Y%m%d-%H%M%S)
           ZIP_NAME="deployment-package-${TIMESTAMP}.zip"
           cd deploy
-          zip -r "../${ZIP_NAME}" .
+          # remove any unnecessary caches that might bloat the zip
+          rm -rf node_modules/.cache || true
+          # create zip from deploy folder contents; exclude common noisy files if any
+          zip -r "../${ZIP_NAME}" . -x "node_modules/.cache/*"
+          # export the zip filename for later steps
           echo "DEPLOY_ZIP=${ZIP_NAME}" >> $GITHUB_ENV
           echo "Created deployment package: ${ZIP_NAME}"
 
