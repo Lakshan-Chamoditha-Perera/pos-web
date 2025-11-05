@@ -32,12 +32,20 @@ jobs:
         run: |
           mkdir -p deploy
           cp -r .next deploy/
-          cp -r public deploy/
+          cp -r public deploy/ 2>/dev/null || true
           cp package.json deploy/
           cp package-lock.json deploy/
-          cp next.config.* deploy/ 2>/dev/null || true
-          cp .env.production deploy/ 2>/dev/null || true
-          cp .env.local deploy/ 2>/dev/null || true
+          
+          # Copy next.config files
+          shopt -s nullglob
+          for file in next.config.*; do
+            [ -f "$file" ] && cp "$file" deploy/
+          done
+          
+          # Copy .env files (including hidden files)
+          for file in .env*; do
+            [ -f "$file" ] && cp "$file" deploy/
+          done
 
       - name: Upload deployment package
         uses: actions/upload-artifact@v4
