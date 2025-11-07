@@ -8,7 +8,8 @@ on:
 jobs:
   lint_and_build:
     name: Lint, Build & Create Deployment Package
-    runs-on: ubuntu-latest
+    # runs-on: ubuntu-latest
+    runs-on: self-hosted
 
     # If you use GitHub Environments (approval/protection), keep this; otherwise remove it.
     environment: dev
